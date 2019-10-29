@@ -80,11 +80,15 @@ let
     };
 
     buildInputs = {
-      unknown.cargo2nix."*" = with pkgs; [ libiconv ] ++ macosFrameworks;
+      unknown.cargo2nix."*" = with pkgs; [ libiconv nix-prefetch-git ] ++ macosFrameworks;
       "registry+https://github.com/rust-lang/crates.io-index".cargo."*" = with pkgs; [ libiconv ] ++ macosFrameworks;
       "registry+https://github.com/rust-lang/crates.io-index".curl-sys."*" = with pkgs; [ nghttp2 ] ++ macosFrameworks;
       "registry+https://github.com/rust-lang/crates.io-index".libgit2-sys."*" = with pkgs; [ libiconv ] ++ macosFrameworks;
     };
+
+    #propagatedBuildInputs = {
+    #  unknown.cargo2nix."*" = with pkgs; [ nix-prefetch-git ];
+    #};
   };
 
   rustPackages = pkgs.callPackage ./crate.nix {
