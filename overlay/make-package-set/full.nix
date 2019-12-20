@@ -1,26 +1,30 @@
-args@{
-  rustLib,
+{
   pkgs,
-  packageFun,
-  rustPackageConfig ? { },
-  stdenv,
   lib,
+  rustLib,
+  stdenv,
+  mkRustCrate,
+  mkRustCrateNoBuild,
+}:
+{
+  packageFun,
   cargo,
   rustc,
-  mkRustCrate,
   buildRustPackages ? null,
-  localPatterns ? [ ''^(src)(/.*)?'' ''[^/]*\.(rs|toml)$'' ],
-  ...
+  localPatterns ? [ ''^(src|tests)(/.*)?'' ''[^/]*\.(rs|toml)$'' ],
+  packageOverrides ? [ ],
+  fetchCrateAlternativeRegistry ? _: throw "fetchCrateAlternativeRegistry is required, but not specified in makePackageSet",
+  release ? null,
+  rootFeatures ? null,
 }:
 lib.fix' (self:
   let
     rustPackages = self;
-    hasBuildRustPackages = args ? buildRustPackages && args.buildRustPackages != null;
-    buildRustPackages = if hasBuildRustPackages then args.buildRustPackages else self;
+    buildRustPackages' = if buildRustPackages == null then self else buildRustPackages;
     mkScope = scope:
       let
         prevStage = pkgs.__splicedPackages;
-        scopeSpliced = rustLib.splicePackages hasBuildRustPackages {
+        scopeSpliced = rustLib.splicePackages (buildRustPackages != null) {
           pkgsBuildBuild = scope.buildRustPackages.buildRustPackages;
           pkgsBuildHost = scope.buildRustPackages;
           pkgsBuildTarget = {};
@@ -35,15 +39,30 @@ lib.fix' (self:
     defaultScope = mkScope self;
     callPackage = lib.callPackageWith defaultScope;
 
-    mkRustCrate = lib.makeOverridable (callPackage args.mkRustCrate { inherit rustLib; config = rustPackageConfig; });
-  in packageFun {
-    inherit rustPackages buildRustPackages lib mkRustCrate;
-    inherit (stdenv) hostPlatform;
-    rustLib = rustLib // { fetchCrateLocal = path: (lib.sourceByRegex path localPatterns).outPath; };
-    ${ if args ? release then "release" else null } = args.release;
-    ${ if args ? rootFeatures then "rootFeatures" else null } = args.rootFeatures;
-  } // {
-    inherit rustPackages buildRustPackages callPackage cargo rustc pkgs mkRustCrate;
-    config = rustPackageConfig;
+    mkRustCrate' = lib.makeOverridable (callPackage mkRustCrate { inherit rustLib; });
+    combinedOverride = builtins.foldl' rustLib.combineOverrides rustLib.nullOverride packageOverrides;
+    packageFunWith = { mkRustCrate, buildRustPackages }: lib.fix (rustPackages: packageFun {
+      inherit rustPackages buildRustPackages lib;
+      inherit (stdenv) hostPlatform;
+      mkRustCrate = rustLib.runOverride combinedOverride mkRustCrate;
+      rustLib = rustLib // {
+        fetchCrateAlternativeRegistry = args: rustLib.unpackSrc {
+          inherit (args) name;
+          src = fetchCrateAlternativeRegistry args;
+        };
+        fetchCrateLocal = path: (lib.sourceByRegex path localPatterns).outPath;
+      };
+      ${ if release == null then null else "release" } = release;
+      ${ if rootFeatures == null then null else "rootFeatures" } = rootFeatures;
+    });
+
+  in packageFunWith { mkRustCrate = mkRustCrate'; buildRustPackages = buildRustPackages'; } // {
+    inherit rustPackages callPackage cargo rustc pkgs;
+    noBuild = packageFunWith {
+      mkRustCrate = lib.makeOverridable mkRustCrateNoBuild { };
+      buildRustPackages = buildRustPackages'.noBuild;
+    };
+    mkRustCrate = mkRustCrate';
+    buildRustPackages = buildRustPackages';
     __splicedPackages = defaultScope;
   })
