@@ -60,20 +60,52 @@ in rec {
   # Don't forget to add new overrides here.
   all = [
     capLints
-    openssl-sys
     curl-sys
+    fsevent-sys
     libgit2-sys
+    openssl-sys
+    pkg-config
     pq-sys
     prost-build
-    rand_os
     rand
+    rand_os
     rdkafka-sys
+    ring
   ];
 
   capLints = makeOverride {
     registry = "registry+https://github.com/rust-lang/crates.io-index";
     overrideArgs = old: { rustcflags = old.rustcflags or [ ] ++ [ "--cap-lints" "warn" ]; };
   };
+
+  curl-sys = makeOverride {
+    name = "curl-sys";
+    overrideAttrs = drv: {
+      propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ (patchCurl pkgs) ];
+    };
+  };
+
+  fsevent-sys = makeOverride {
+    name = "fsevent-sys";
+    overrideAttrs = drv: {
+      propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [
+        pkgs.darwin.apple_sdk.frameworks.CoreServices
+      ];
+    };
+  };
+
+  libgit2-sys = if pkgs.stdenv.hostPlatform.isDarwin
+    then makeOverride {
+      name = "libgit2-sys";
+      overrideAttrs = drv: {
+        propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [
+          pkgs.libiconv
+          pkgs.darwin.apple_sdk.frameworks.Security
+          pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+        ];
+      };
+    }
+    else nullOverride;
 
   openssl-sys = makeOverride {
     name = "openssl-sys";
@@ -87,21 +119,14 @@ in rec {
     };
   };
 
-  curl-sys = makeOverride {
-    name = "curl-sys";
-    overrideAttrs = drv: {
-      propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ (patchCurl pkgs) ];
-    };
-  };
-
-  libgit2-sys = if pkgs.stdenv.hostPlatform.isDarwin
+  pkg-config = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
     then makeOverride {
-      name = "libgit2-sys";
+      name = "pkg-config";
       overrideAttrs = drv: {
         propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [
-          pkgs.libiconv
-          pkgs.darwin.apple_sdk.frameworks.Security
-          pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+          (propagateEnv "pkg-config" [
+            { name = "PKG_CONFIG_ALLOW_CROSS"; value = "1"; }
+          ])
         ];
       };
     }
@@ -136,18 +161,18 @@ in rec {
     };
   };
 
-  rand_os = if pkgs.stdenv.hostPlatform.isDarwin
+  rand = if pkgs.stdenv.hostPlatform.isDarwin
     then makeOverride {
-      name = "rand_os";
+      name = "rand";
       overrideAttrs = drv: {
         propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ pkgs.darwin.apple_sdk.frameworks.Security ];
       };
     }
     else nullOverride;
 
-  rand = if pkgs.stdenv.hostPlatform.isDarwin
+  rand_os = if pkgs.stdenv.hostPlatform.isDarwin
     then makeOverride {
-      name = "rand";
+      name = "rand_os";
       overrideAttrs = drv: {
         propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ pkgs.darwin.apple_sdk.frameworks.Security ];
       };
@@ -163,4 +188,13 @@ in rec {
       '';
     };
   };
+  
+  ring = if pkgs.stdenv.hostPlatform.isDarwin
+    then makeOverride {
+      name = "ring";
+      overrideAttrs = drv: {
+        propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ pkgs.darwin.apple_sdk.frameworks.Security ];
+      };
+    }
+    else nullOverride;
 }
