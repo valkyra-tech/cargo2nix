@@ -78,7 +78,8 @@ let
     in
       ''
         cargo build $CARGO_VERBOSE ${optionalString release "--release"} --target ${host-triple} ${buildMode} \
-          ${featuresArg} ${optionalString (!hasDefaultFeature) "--no-default-features"}
+          ${featuresArg} ${optionalString (!hasDefaultFeature) "--no-default-features"} \
+          --message-format=json | tee .cargo-build-output
       '';
 
     inherit
@@ -188,10 +189,6 @@ let
     '';
 
     setBuildEnv = ''
-      isProcMacro="$( \
-        remarshal -if toml -of json Cargo.original.toml \
-        | jq -r 'if .lib."proc-macro" or .lib."proc_macro" then "1" else "" end' \
-      )"
       crateName="$(
         remarshal -if toml -of json Cargo.original.toml \
         | jq -r 'if .lib."name" then .lib."name" else "${replaceChars ["-"] ["_"] name}" end' \
@@ -231,7 +228,7 @@ let
     installPhase = ''
       mkdir -p $out/lib
       cargo_links="$(remarshal -if toml -of json Cargo.original.toml | jq -r '.package.links | select(. != null)')"
-      install_crate ${host-triple}
+      install_crate2 ${host-triple}
     '';
   };
 in
