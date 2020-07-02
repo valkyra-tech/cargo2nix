@@ -32,29 +32,21 @@ nix-env -iA package -f https://github.com/tenx-tech/cargo2nix/tarball/master
 
 ### As a build system
 
+The basic process of converting an existing Cargo project to `cargo2nix` boils
+down to the following steps:
+
 1. Generate a `Cargo.nix` file by running `cargo2nix -f` at the root of your
    Cargo workspace.
+2. Create a `default.nix` file which imports Nixpkgs with the [cargo2nix] and
+   [nixpkgs-mozilla] overlays and builds your project using the `Cargo.nix` file
+   from earlier.
+3. Run `nix-build` to compile and/or test your project.
 
-2. Use the `default.nix` and `shell.nix` in this repository as an example and
-   point the `package` attribute to the package(s) you would like to build.
+[nixpkgs-mozilla]: https://github.com/mozilla/nixpkgs-mozilla#rust-overlay
+[cargo2nix]: ./overlay
 
-3. Build your Cargo workspace with the following command:
-
-   ```bash
-   # For Linux users
-   nix-build -A package
-
-   # For macOS/Darwin users
-   nix-build -A package --arg crossSystem null
-   ```
-
-   Alternatively, you can drop into a self-contained environment containing the
-   correct version of the Rust toolchain (`rustc`, `cargo`, `rls`) and all
-   required system dependencies by running:
-
-   ```bash
-   nix-shell
-   ```
+Check out our series of [example projects](./examples) which showcase how to use
+`cargo2nix` in detail.
 
 ### Optional declarative development shell
 
@@ -70,7 +62,7 @@ you into such a development shell.
 ```bash
 # When a crate is not associated with any registry, such as when building locally,
 # the registry is "unknown" as shown below.
-nix-shell -A 'rustPkgs.unknown.cargo2nix."0.8.0"' default.nix
+nix-shell -A 'rustPkgs.unknown.cargo2nix."0.8.3"' default.nix
 ```
 
 You will need to bootstrap some environment in this declarative development
@@ -99,7 +91,8 @@ runHook runCargo
 
 1. Many `crates.io` public crates may not build using the current Rust compiler,
    unless a lint cap is put on these crates. For instance, `cargo2nix` caps all
-   warnings in the `failure` crate to just `warn`.
+   lints to `warn` by default.
+
 2. Nix 2.1.3 ships with a broken `builtins.fromTOML` function which is unable to
    parse lines of TOML that look like this:
 
@@ -116,6 +109,15 @@ runHook runCargo
    ```text
    error: while parsing a TOML string at /nix/store/.../overlay/mkcrate.nix:31:14: Bare key 'cfg(target_os = "linux")' cannot contain whitespace at line 45
    ```
+
+3. Git dependencies and crates from alternative Cargo registries rely on
+   `builtins.fetchGit` to support fetching from private Git repositories. This
+   means that such dependencies cannot be evaluated with `restrict-eval`
+   applied.
+
+   Also, if your Git dependency is tied to a Git branch, e.g. `master`, and you
+   would like to force it to update on upstream changes, you should append
+   `--option tarball-ttl 0` to your `nix-build` command.
 
 ## Design
 

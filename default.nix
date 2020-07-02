@@ -20,7 +20,7 @@ let
         rustOverlay = import "${nixpkgsMozilla}/rust-overlay.nix";
         cargo2nixOverlay = import ./overlay;
       in
-        overlays ++ [ cargo2nixOverlay rustOverlay ];
+        [ cargo2nixOverlay rustOverlay ] ++ overlays;
   };
 
   # 2. Builds the rust package set, which contains all crates in your cargo workspace's dependency graph.
@@ -44,7 +44,7 @@ let
   # - `fetchCrateAlternativeRegistry` (optional): A fetcher for crates on alternative registries.
   # - `release` (optional): Whether to enable release mode (equivalent to `cargo build --release`), defaults to `true`.
   rustPkgs = pkgs.rustBuilder.makePackageSet' {
-    rustChannel = "1.37.0";
+    rustChannel = "1.41.0";
     packageFun = import ./Cargo.nix;
     packageOverrides = pkgs: pkgs.rustBuilder.overrides.all;
     localPatterns = [ ''^(src|tests|templates)(/.*)?'' ''[^/]*\.(rs|toml)$'' ];
@@ -77,7 +77,15 @@ rec {
   # containing all native dependencies provided by the overrides above.
   # `cargo build` with in the shell should just work.
   shell = pkgs.mkShell {
-    inputsFrom =  pkgs.lib.mapAttrsToList (_: pkg: pkg { }) rustPkgs.noBuild.workspace;
+    inputsFrom = pkgs.lib.mapAttrsToList (_: pkg: pkg { }) rustPkgs.noBuild.workspace;
     nativeBuildInputs = with rustPkgs; [ cargo rustc ];
   };
+  examples =
+    let
+      importExprsInDir = with pkgs.lib; dir:
+        mapAttrsToList (name: _: import (dir + "/${name}") {})
+          (pkgs.lib.filterAttrs (name: kind: kind == "directory")
+            (builtins.readDir dir));
+    in
+      importExprsInDir ./examples;
 }

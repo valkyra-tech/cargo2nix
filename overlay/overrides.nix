@@ -3,19 +3,22 @@ let
   inherit (rustLib) makeOverride nullOverride;
   envize = s: builtins.replaceStrings ["-"] ["_"] (lib.toUpper s);
 
-  patchOpenssl = pkgs: (pkgs.openssl.override {
-    # We only need `perl` at build time. It's also used as the interpreter for one
-    # of the produced binaries (`c_rehash`), but they'll be removed later.
-    perl = pkgs.buildPackages.buildPackages.perl;
-  }).overrideAttrs (drv: {
-    installTargets = "install_sw";
-    outputs = [ "dev" "out" "bin" ];
-    # Remove binaries, we need only libraries.
-    postFixup = ''
-      ${drv.postFixup}
-      rm -rf $bin/*
-    '';
-  });
+  patchOpenssl = pkgs:
+    if pkgs.stdenv.hostPlatform == pkgs.stdenv.buildPlatform
+    then pkgs.openssl
+    else (pkgs.openssl.override {
+      # We only need `perl` at build time. It's also used as the interpreter for one
+      # of the produced binaries (`c_rehash`), but they'll be removed later.
+      perl = pkgs.buildPackages.buildPackages.perl;
+    }).overrideAttrs (drv: {
+      installTargets = "install_sw";
+      outputs = [ "dev" "out" "bin" ];
+      # Remove binaries, we need only libraries.
+      postFixup = ''
+        ${drv.postFixup}
+        rm -rf $bin/*
+      '';
+    });
 
   joinOpenssl = openssl: buildPackages.symlinkJoin {
     name = "openssl"; paths = with openssl; [ out dev ];
@@ -67,6 +70,7 @@ in rec {
     pkg-config
     pq-sys
     prost-build
+    protoc
     rand
     rand_os
     rdkafka-sys
@@ -119,18 +123,17 @@ in rec {
     };
   };
 
-  pkg-config = if pkgs.stdenv.hostPlatform != pkgs.stdenv.buildPlatform
-    then makeOverride {
-      name = "pkg-config";
-      overrideAttrs = drv: {
-        propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [
-          (propagateEnv "pkg-config" [
-            { name = "PKG_CONFIG_ALLOW_CROSS"; value = "1"; }
-          ])
-        ];
-      };
-    }
-    else nullOverride;
+  pkg-config = makeOverride {
+    name = "pkg-config";
+    overrideAttrs = drv: {
+      propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [
+        pkgs.pkg-config
+        (propagateEnv "pkg-config" [
+          { name = "PKG_CONFIG_ALLOW_CROSS"; value = "1"; }
+        ])
+      ];
+    };
+  };
 
   pq-sys =
     let
@@ -158,6 +161,13 @@ in rec {
           { name = "PROTOC"; value = "${pkgs.buildPackages.buildPackages.protobuf}/bin/protoc"; }
         ])
       ];
+    };
+  };
+
+  protoc = makeOverride {
+    name = "protoc";
+    overrideAttrs = drv: {
+      propagatedBuildInputs = drv.propagatedBuildInputs or [ ] ++ [ pkgs.buildPackages.buildPackages.protobuf ];
     };
   };
 
